@@ -561,6 +561,57 @@ def save_json(results: list[VCPResult], path: str = "vcp_results.json"):
     print(f"  Results saved → {path}\n")
 
 
+def send_telegram(results: list[VCPResult]):
+    token   = os.environ.get("TELEGRAM_TOKEN", "")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        return
+
+    vcps = sorted([r for r in results if r.is_vcp], key=lambda x: x.score, reverse=True)
+
+    from collections import Counter
+    sector_counts = Counter(r.sector or "Unknown" for r in vcps)
+    sector_lines  = "\n".join(f"  {s}: {c}" for s, c in sector_counts.most_common())
+
+    lines = [
+        f"📈 *VCP 每日掃描結果* — {datetime.date.today()}",
+        f"掃描股票：{len(results)} 支　｜　候選股：*{len(vcps)} 支*",
+        "",
+        f"*板塊分布*",
+        sector_lines,
+        "",
+        f"*Top 候選股*",
+    ]
+
+    for i, r in enumerate(vcps[:10], 1):
+        entry  = round(r.pivot * 1.005, 2)
+        stop   = r.stop_loss
+        target = round(r.pivot + (r.pivot - stop / 0.99) * 2, 2) if stop else 0
+        vol_icon = "✅" if r.vol_dryup else "⚠️"
+        lines.append(
+            f"{i}\\. *{r.symbol}* — 分數 {r.score:.0f}  {vol_icon}\n"
+            f"   距Pivot {r.dist_to_pivot:+.1f}%  |  {r.n_contractions}次收縮\n"
+            f"   進場 ${entry}  止損 ${stop}  目標 ${target}"
+        )
+
+    if len(vcps) > 10:
+        lines.append(f"\n_…還有 {len(vcps)-10} 支，詳見網站_")
+
+    lines.append(f"\n🔗 [開啟網站](https://vcp-screener-2pb3mqkqze72yaegcybulg.streamlit.app)")
+
+    text = "\n".join(lines)
+    resp = requests.post(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        json={"chat_id": chat_id, "text": text, "parse_mode": "MarkdownV2",
+              "disable_web_page_preview": True},
+        timeout=15,
+    )
+    if resp.ok:
+        print("  Telegram 通知已發送 ✅")
+    else:
+        print(f"  Telegram 發送失敗：{resp.text}")
+
+
 # ─── Entry Point ─────────────────────────────────────────────────────────────
 
 def main():
@@ -581,6 +632,7 @@ def main():
     results = run_screener(symbols=symbols, limit=args.limit, use_index=args.index, use_broad=args.broad)
     print_report(results)
     save_json(results, path=args.output)
+    send_telegram(results)
 
 
 if __name__ == "__main__":
