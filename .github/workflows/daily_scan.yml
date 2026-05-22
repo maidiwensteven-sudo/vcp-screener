@@ -2,8 +2,8 @@ name: Daily VCP Scan
 
 on:
   schedule:
-    # 每個交易日美東時間 4:30 PM (UTC 20:30) 自動執行
-    - cron: '30 20 * * 1-5'
+    # 台灣時間 09:00 (UTC 01:00)，週一至週五
+    - cron: '0 1 * * 1-5'
   workflow_dispatch:
     # 允許在 GitHub 介面手動觸發
 
