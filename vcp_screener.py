@@ -574,13 +574,13 @@ def send_telegram(results: list[VCPResult]):
     sector_lines  = "\n".join(f"  {s}: {c}" for s, c in sector_counts.most_common())
 
     lines = [
-        f"📈 *VCP 每日掃描結果* — {datetime.date.today()}",
-        f"掃描股票：{len(results)} 支　｜　候選股：*{len(vcps)} 支*",
+        f"📈 <b>VCP 每日掃描結果</b> — {datetime.date.today()}",
+        f"掃描股票：{len(results)} 支　｜　候選股：<b>{len(vcps)} 支</b>",
         "",
-        f"*板塊分布*",
+        "<b>板塊分布</b>",
         sector_lines,
         "",
-        f"*Top 候選股*",
+        "<b>Top 候選股</b>",
     ]
 
     for i, r in enumerate(vcps[:10], 1):
@@ -589,20 +589,20 @@ def send_telegram(results: list[VCPResult]):
         target = round(r.pivot + (r.pivot - stop / 0.99) * 2, 2) if stop else 0
         vol_icon = "✅" if r.vol_dryup else "⚠️"
         lines.append(
-            f"{i}\\. *{r.symbol}* — 分數 {r.score:.0f}  {vol_icon}\n"
+            f"{i}. <b>{r.symbol}</b> — 分數 {r.score:.0f}  {vol_icon}\n"
             f"   距Pivot {r.dist_to_pivot:+.1f}%  |  {r.n_contractions}次收縮\n"
             f"   進場 ${entry}  止損 ${stop}  目標 ${target}"
         )
 
     if len(vcps) > 10:
-        lines.append(f"\n_…還有 {len(vcps)-10} 支，詳見網站_")
+        lines.append(f"\n<i>…還有 {len(vcps)-10} 支，詳見網站</i>")
 
-    lines.append(f"\n🔗 [開啟網站](https://vcp-screener-2pb3mqkqze72yaegcybulg.streamlit.app)")
+    lines.append(f'\n🔗 <a href="https://vcp-screener-2pb3mqkqze72yaegcybulg.streamlit.app">開啟網站</a>')
 
     text = "\n".join(lines)
     resp = requests.post(
         f"https://api.telegram.org/bot{token}/sendMessage",
-        json={"chat_id": chat_id, "text": text, "parse_mode": "MarkdownV2",
+        json={"chat_id": chat_id, "text": text, "parse_mode": "HTML",
               "disable_web_page_preview": True},
         timeout=15,
     )
