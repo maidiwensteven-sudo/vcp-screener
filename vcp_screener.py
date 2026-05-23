@@ -32,7 +32,23 @@ import math
 import argparse
 import datetime
 import requests
+from pathlib import Path
 from dataclasses import dataclass, field
+
+SECTOR_ZH = {
+    "Technology":             "科技",
+    "Energy":                 "能源",
+    "Financial Services":     "金融",
+    "Healthcare":             "醫療",
+    "Consumer Cyclical":      "非必需消費",
+    "Consumer Defensive":     "必需消費",
+    "Industrials":            "工業",
+    "Basic Materials":        "原材料",
+    "Real Estate":            "房地產",
+    "Communication Services": "通訊",
+    "Utilities":              "公用",
+    "Unknown":                "其他",
+}
 
 FMP_KEY    = os.environ.get("FMP_API_KEY", "")
 BASE       = "https://financialmodelingprep.com/api"
@@ -569,37 +585,49 @@ def send_telegram(results: list[VCPResult]):
 
     vcps = sorted([r for r in results if r.is_vcp], key=lambda x: x.score, reverse=True)
 
-    from collections import Counter
-    sector_counts = Counter(r.sector or "Unknown" for r in vcps)
-    sector_lines  = "\n".join(f"  {s}: {c}" for s, c in sector_counts.most_common())
+    # 載入前日結果，找出新標
+    prev_symbols: set[str] = set()
+    prev_path = Path("results/previous.json")
+    if prev_path.exists():
+        try:
+            with open(prev_path) as f:
+                prev_data = json.load(f)
+            prev_symbols = {c["symbol"] for c in prev_data.get("candidates", [])}
+        except Exception:
+            pass
+
+    new_vcps = [r for r in vcps if r.symbol not in prev_symbols]
 
     lines = [
-        f"📈 <b>VCP 每日掃描結果</b> — {datetime.date.today()}",
-        f"掃描股票：{len(results)} 支　｜　候選股：<b>{len(vcps)} 支</b>",
+        f"📈 <b>VCP 每日掃描</b> — {datetime.date.today()}",
+        f"掃描 <b>{len(results):,}</b> 支　｜　候選 <b>{len(vcps)}</b> 支　｜　新增 <b>{len(new_vcps)}</b> 支",
         "",
-        "<b>板塊分布</b>",
-        sector_lines,
-        "",
-        "<b>Top 候選股</b>",
+        "📋 <b>全部候選股（分數排序）</b>",
     ]
 
-    for i, r in enumerate(vcps[:10], 1):
-        entry  = round(r.pivot * 1.005, 2)
-        stop   = r.stop_loss
-        target = round(r.pivot + (r.pivot - stop / 0.99) * 2, 2) if stop else 0
-        vol_icon = "✅" if r.vol_dryup else "⚠️"
+    for i, r in enumerate(vcps, 1):
+        vol_icon   = "✅" if r.vol_dryup else "⚠️"
+        new_mark   = " 🆕" if r.symbol not in prev_symbols else ""
+        sector_str = SECTOR_ZH.get(r.sector or "", r.sector or "—")
         lines.append(
-            f"{i}. <b>{r.symbol}</b> — 分數 {r.score:.0f}  {vol_icon}\n"
-            f"   距Pivot {r.dist_to_pivot:+.1f}%  |  {r.n_contractions}次收縮\n"
-            f"   進場 ${entry}  止損 ${stop}  目標 ${target}"
+            f"#{i:02d} <b>{r.symbol}</b>  {r.score:.0f}分  {r.n_contractions}收縮 {vol_icon}  {sector_str}{new_mark}"
         )
 
-    if len(vcps) > 10:
-        lines.append(f"\n<i>…還有 {len(vcps)-10} 支，詳見網站</i>")
+    if new_vcps:
+        lines.append("")
+        lines.append(f"🆕 <b>今日新增（{len(new_vcps)} 支）</b>")
+        for r in new_vcps:
+            vol_icon   = "✅" if r.vol_dryup else "⚠️"
+            sector_str = SECTOR_ZH.get(r.sector or "", r.sector or "—")
+            lines.append(f"• <b>{r.symbol}</b>  {r.score:.0f}分  {r.n_contractions}收縮 {vol_icon}  {sector_str}")
 
-    lines.append(f'\n🔗 <a href="https://vcp-screener-2pb3mqkqze72yaegcybulg.streamlit.app">開啟網站</a>')
+    lines.append("")
+    lines.append(f'🔗 <a href="https://vcp-screener-2pb3mqkqze72yaegcybulg.streamlit.app">開啟 VCP 網站</a>')
 
     text = "\n".join(lines)
+    if len(text) > 4000:
+        text = text[:3950] + f'\n...\n\n🔗 <a href="https://vcp-screener-2pb3mqkqze72yaegcybulg.streamlit.app">開啟 VCP 網站</a>'
+
     resp = requests.post(
         f"https://api.telegram.org/bot{token}/sendMessage",
         json={"chat_id": chat_id, "text": text, "parse_mode": "HTML",
